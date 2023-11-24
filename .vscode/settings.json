@@ -1,0 +1,22 @@
+{
+    "cSpell.words": [
+        "adoc",
+        "btrbk",
+        "btrfs",
+        "Cmnd",
+        "filesystems",
+        "ifdef",
+        "jwillikers",
+        "mkdir",
+        "NOPASSWD",
+        "ostree",
+        "readlink",
+        "restorecon",
+        "rockpro",
+        "snapshotted",
+        "subvolume",
+        "subvolumes",
+        "sudoedit"
+    ],
+    "asciidoc.antora.enableAntoraSupport": true
+}

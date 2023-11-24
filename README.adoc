@@ -1,0 +1,293 @@
+= btrbk Config
+Jordan Williams <jordan@jwillikers.com>
+:experimental:
+:icons: font
+:keywords: backup btrbk btrfs cow incremental snapshot ssh sudo systemd
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+:btrbk: https://digint.ch/btrbk/[btrbk]
+
+My configuration files for the {btrbk} backup tool.
+This configuration utilizes Btrfs to take hourly snapshots and incremental backups of specific subvolumes.
+
+== Usage
+
+This repository contains the {btrbk} configuration files for my various systems.
+Devices that take snapshots of subvolumes, dubbed _target_ devices, do so hourly via their configurations.
+Backups are handled from an isolated, remote system via a _pull_ strategy over an SSH connection.
+The setup and configuration vary according to whether the device is a remote backup device or a system taking local snapshots of the important data.
+The instructions here describe how to configure everything to get this working for both the _target_ and _backup_ roles.
+It's recommended that the backup systems be configured first, as this will produce the SSH public keys required to configure the target systems.
+
+. Install btrbk.
++
+[,sh]
+----
+sudo rpm-ostree install btrbk
+----
+
+. Reboot.
++
+[,sh]
+----
+sudo systemctl reboot
+----
+
+. Create the necessary subvolumes and directories.
++
+Backup::
++
+.. Create the _target_ directories where the backups will reside.
++
+[,sh]
+----
+sudo mkdir --parents /run/media/system/jwillikers_Backup_02/{meerkat,rockpro64}.jwillikers.io
+----
+
+Target::
++
+.. Configure any Btrfs filesystems as necessary.
+The argument following the `volumes` directive denotes root of the particular Btrfs filesystem.
+In many cases, this might just be `/` if the root filesystem is Btrfs.
+My configurations for target devices have the home directory on its own disk and therefore its own Btrfs filesystem, which results in `volume /var/home`. 
+Get this part sorted out first by orchestrating the underlying disks, partitions, and filesystems as they should be.
+
+.. Ensure that any subvolumes mentioned in the configuration file exist.
+Either create new subvolumes or migrate any existing directories to be subvolumes.
+The following command creates the subvolume `/var/home/core/container-volumes`.
++
+[,sh]
+----
+sudo btrfs subvolume create /var/home/core/container-volumes
+----
+
+.. Correct ownership of the subvolume as needed.
++
+[,sh]
+----
+sudo chown --recursive core:core /var/home/core/container-volumes
+----
+
+.. Create the necessary `.snapshots` subvolumes where the snapshots will be stored.
+Each _volume_ in the configuration must contain its own `.snapshots` subvolume owned by the root user.
+For instance, when backing up a subvolume that is under the volume `/run/media/system/JWillikers_Data` create the `/run/media/system/JWillikers_Data/.snapshots` subvolume.
++
+[,sh]
+----
+sudo btrfs subvolume create /run/media/system/JWillikers_Data/.snapshots
+----
+
+. Configure SSH.
++
+Backup::
++
+.. Create a directory for storing the SSH key that will be used to access the target machine for creating backups.
++
+[,sh]
+----
+sudo mkdir --parents /etc/backup/ssh
+----
+
+.. Generate the backup SSH key.
++
+[,sh]
+----
+sudo ssh-keygen -t rsa -b 4096 -f /etc/backup/ssh/id_rsa -C $USER@(hostname) -N ""
+----
+
+.. Note the public key just created.
+This key will be placed in the `authorized_keys` file of the `backup` user.
++
+[,sh]
+----
+sudo cat /etc/backup/ssh/id_rsa.pub
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDU9d2LjH01...3dmTrNfJavtZ7Q62GqxnL0D6cjNNrxew== backup@rockpro64.jwillikers.io
+----
+
+.. Add the host keys of the target machine to the user's `known_hosts` file on the machine carrying out the backups. 
++
+[,sh]
+----
+sudo --user root ssh -i /etc/backup/ssh/id_rsa rockpro64.jwillikers.io
+----
+
+Target::
++
+.. Create a dedicated `backup` group for the `backup` user.
++
+[,sh]
+----
+sudo groupadd --gid 801 --system backup
+----
+
+.. Create a dedicated `backup` user account to allow Btrbk to login.
++
+[,sh]
+----
+sudo useradd \
+  --btrfs-subvolume-home \
+  --comment "Account used for remote backups." \
+  --create-home \
+  --gid backup \
+  --shell /usr/bin/bash \
+  --system \
+  --uid 801 \
+  backup
+----
+
+.. Create a new sudoers policy file for the `backup` user.
++
+[,sh]
+----
+sudoedit /etc/sudoers.d/99-backup
+----
+
+// todo Restrict commands further?
+.. Allow the backup user to run the necessary commands as root to manipulate Btrfs snapshots.
++
+--
+./etc/sudoers.d/99-backup
+[source]
+----
+Cmnd_Alias BTRBK_BACKUP = /usr/sbin/btrfs, /usr/bin/readlink
+
+backup rockpro64.jwillikers.io=NOPASSWD:BTRBK_BACKUP
+----
+
+[NOTE]
+====
+Ensure that `btrfs` is at the correct location, i.e. `/usr/sbin/btrfs`, if using a different installation method.
+====
+--
+
+.. Create the `backup` user's SSH directory.
++
+[,sh]
+----
+sudo --user backup mkdir --parents /home/backup/.ssh
+----
+
+.. Configure Btrbk's SSH command filter so that only the relevant Btrfs commands can be executed from the backup machine.
+Replace the sample key used here with the public SSH key generated on the backup machine.
++
+--
+./home/backup/.ssh/authorized_keys
+[source]
+----
+command="/usr/share/btrbk/scripts/ssh_filter_btrbk.sh --sudo --source --target --delete --info --send --receive --restrict-path /run/media/system/JWillikers_Data" ssh-rsa AAAAB3NzaC1...hwumXFRQBL root@backup-01.jwillikers.io
+----
+
+This uses the `--restrict-path` option to restrict commands to operating only on paths at or below `/btrfs_pool`.
+Be sure to configure this appropriately so that access is only allowed for the necessary _volumes_ in the system's configuration.
+--
+
+.. Make sure that the `backup` user's `.ssh` directory and included files have the correct ownership.
++
+[,sh]
+----
+sudo chown --recursive backup:backup /home/backup/.ssh
+----
+
+// I had to fix SELinux labeling of the /home/backup directory for some reason.
+// sudo restorecon -R -F /home/backup
+
+. Make a `~/Projects` directory in which to clone the repository.
++
+[,sh]
+----
+mkdir --parents ~/Projects
+----
+
+. Clone this repository.
++
+[,sh]
+----
+git -C ~/Projects clone git@github.com:jwillikers/btrbk-config.git
+----
+
+. Change to the repository directory.
++
+[,sh]
+----
+cd btrbk-config
+----
+
+. Copy the relevant config file to the `/etc/btrbk/` directory as `btrbk.conf`.
++
+[,sh]
+----
+sudo cp btrbk.rockpro64.conf /etc/btrbk/btrbk.conf
+----
+
+. Edit the `btrbk.timer` systemd unit to fire as often as you want.
++
+--
+[,sh]
+----
+sudo systemctl edit btrbk.timer
+----
+
+I switch my timer to run hourly instead of daily using the configuration below.
+
+./etc/systemd/system/btrbk.timer.d/override.conf
+[,systemd]
+----
+[Unit]
+Description=btrbk hourly backup
+
+[Timer]
+OnCalendar=hourly
+----
+--
+
+. Enable and start the systemd timer.
++
+[,sh]
+----
+sudo systemctl enable --now btrbk.timer
+----
+
+. Start a tmux session in case the first sync takes a while to complete.
++
+[,sh]
+----
+tmux
+----
+
+. Manually run the `btrbk.service` service.
++
+[,sh]
+----
+sudo systemctl start btrbk.service
+----
+
+== References
+
+* https://digint.ch/btrbk/doc/readme.html[btrbk README]
+* https://digint.ch/btrbk/doc/faq.html[btrbk FAQ]
+* https://digint.ch/btrbk/doc/btrbk.1.html[btrbk(1)]
+* https://digint.ch/btrbk/doc/btrbk.conf.5.html[btrbk.conf(5)]
+* https://digint.ch/btrbk/doc/ssh_filter_btrbk.1.html[ssh_filter_btrbk(1)]
+* https://github.com/digint/btrbk[btrbk GitHub]
+
+== Code of Conduct
+
+Please refer to the project's link:CODE_OF_CONDUCT.adoc[Code of Conduct].
+
+== License
+
+This repository is licensed under the https://www.gnu.org/licenses/gpl-3.0.html[GPLv3].
+Please refer to the bundled link:LICENSE.adoc[license].
+
+== Copyright
+
+© 2023 Jordan Williams
+
+== Authors
+
+mailto:{email}[{author}]
