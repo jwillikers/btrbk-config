@@ -147,8 +147,8 @@ sudo useradd \
 sudoedit /etc/sudoers.d/99-backup
 ----
 
-// todo Restrict commands further?
 .. Allow the backup user to run the necessary commands as root to manipulate Btrfs snapshots.
+// todo Restrict commands further?
 +
 --
 ./etc/sudoers.d/99-backup
