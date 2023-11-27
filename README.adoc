@@ -187,14 +187,13 @@ Be sure to configure this appropriately so that access is only allowed for the n
 --
 
 .. Make sure that the `backup` user's `.ssh` directory and included files have the correct ownership.
+// I had to fix SELinux labeling of the /home/backup directory for some reason.
+// sudo restorecon -R -F /home/backup
 +
 [,sh]
 ----
 sudo chown --recursive backup:backup /home/backup/.ssh
 ----
-
-// I had to fix SELinux labeling of the /home/backup directory for some reason.
-// sudo restorecon -R -F /home/backup
 
 . Make a `~/Projects` directory in which to clone the repository.
 +
