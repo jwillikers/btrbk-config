@@ -54,7 +54,7 @@ Target::
 .. Configure any Btrfs filesystems as necessary.
 The argument following the `volumes` directive denotes root of the particular Btrfs filesystem.
 In many cases, this might just be `/` if the root filesystem is Btrfs.
-My configurations for target devices have the home directory on its own disk and therefore its own Btrfs filesystem, which results in `volume /var/home`. 
+My configurations for target devices have the home directory on its own disk and therefore its own Btrfs filesystem, which results in `volume /var/home`.
 Get this part sorted out first by orchestrating the underlying disks, partitions, and filesystems as they should be.
 
 .. Ensure that any subvolumes mentioned in the configuration file exist.
@@ -109,7 +109,7 @@ sudo cat /etc/backup/ssh/id_rsa.pub
 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDU9d2LjH01...3dmTrNfJavtZ7Q62GqxnL0D6cjNNrxew== backup@rockpro64.jwillikers.io
 ----
 
-.. Add the host keys of the target machine to the user's `known_hosts` file on the machine carrying out the backups. 
+.. Add the host keys of the target machine to the user's `known_hosts` file on the machine carrying out the backups.
 +
 [,sh]
 ----
@@ -206,7 +206,7 @@ mkdir --parents ~/Projects
 +
 [,sh]
 ----
-git -C ~/Projects clone git@github.com:jwillikers/btrbk-config.git
+git -C ~/Projects clone git@codeberg.org:jwillikers/btrbk-config.git
 ----
 
 . Change to the repository directory.
